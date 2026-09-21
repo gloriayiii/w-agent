@@ -117,5 +117,18 @@ export function splitMessages(text: string): string[] {
     return chunks.slice(0, 3)
   }
 
-  return parts.slice(0, 3)
+  return parts.slice(0, 3).map(dropTrailingPeriod)
+}
+
+/**
+ * Drop the sentence-final 。 from a bubble.
+ *
+ * People do not end chat messages with a full stop; it reads as stiff and
+ * slightly formal, which is most of what makes a bot feel like a bot. The
+ * persona card says this too, but the model reverts under pressure, so it
+ * is enforced here as well. Internal punctuation, ？ ！ and … are kept —
+ * only the final 。 goes.
+ */
+function dropTrailingPeriod(bubble: string): string {
+  return bubble.replace(/。\s*$/, '')
 }
