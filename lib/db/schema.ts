@@ -59,14 +59,66 @@ export const facts = pgTable('facts', {
 })
 
 /**
- * Preference signal. Telegram message reactions are the labelling UI —
- * a thumbs-up on one of W's replies lands here. No frontend required.
+ * Preference signal.
+ *
+ * Two sources, and the second is far more valuable than the first:
+ *
+ *   reaction   — a Telegram emoji reaction on one of W's messages. Free,
+ *                but says only good/bad, never why.
+ *   correction — she told W off in the conversation itself ("这句太冲了").
+ *                `note` keeps her exact words. One of these is worth
+ *                dozens of thumbs-downs: it carries the reason, so it can
+ *                be turned into a rule instead of just a training weight.
  */
 export const feedback = pgTable('feedback', {
   id: bigserial('id', { mode: 'number' }).primaryKey(),
   messageId: bigint('message_id', { mode: 'number' }).notNull(),
   signal: smallint('signal').notNull(), // +1 / -1
+  kind: text('kind').notNull().default('reaction'), // reaction | correction
+  /** Her exact words, for corrections. Never paraphrased. */
+  note: text('note'),
   ts: timestamp('ts', { withTimezone: true }).defaultNow(),
+})
+
+/**
+ * One compressed record per day of conversation, written by the nightly
+ * reflection pass. This is what lets W refer back to last week without
+ * carrying last week in the context window.
+ *
+ * No embedding column yet — deliberately. Vector retrieval is pointless
+ * until there are hundreds of these, and until then "the last 7 days,
+ * newest first" is both cheaper and better. Add `embedding vector(1024)`
+ * (bge-m3) when the count passes a few hundred.
+ */
+export const episodes = pgTable(
+  'episodes',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    /** Local date this episode covers, as YYYY-MM-DD. */
+    day: text('day').notNull().unique(),
+    summary: text('summary').notNull(),
+    /** 0-1. How much this day is worth recalling later. */
+    salience: real('salience').default(0.5),
+    ts: timestamp('ts', { withTimezone: true }).defaultNow(),
+  },
+  (t) => [index('episodes_day_idx').on(t.day)]
+)
+
+/**
+ * Things she brought up but never finished.
+ *
+ * This is the single most valuable input to the proactive engine. Without
+ * it, a scheduled message can only say "good morning", which is exactly the
+ * kind of thing that gets an agent muted inside a week.
+ */
+export const openTopics = pgTable('open_topics', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  /** Short phrase in her own words, not a paraphrase. */
+  topic: text('topic').notNull().unique(),
+  status: text('status').notNull().default('open'), // open | resolved | stale
+  firstMentioned: timestamp('first_mentioned', { withTimezone: true }).defaultNow(),
+  lastMentioned: timestamp('last_mentioned', { withTimezone: true }).defaultNow(),
+  sourceId: bigint('source_id', { mode: 'number' }),
 })
 
 export const proactiveLog = pgTable('proactive_log', {

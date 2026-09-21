@@ -5,6 +5,7 @@ import { respond } from '@/lib/agent/respond'
 import { sendMessage, sendTyping, sleep } from '@/lib/telegram/api'
 import type { TgUpdate } from '@/lib/telegram/types'
 import { trace } from '@/lib/trace'
+import { classifyTurn } from '@/lib/memory/classify'
 
 export const maxDuration = 300
 
@@ -124,9 +125,16 @@ async function handle(update: TgUpdate) {
 
   const merged = pending.map((p) => p.content).join('\n')
 
-  // 5. Generate and send.
+  // 5. Classify the turn BEFORE replying, while W's previous message is
+  //    still the most recent assistant row. This tags that message and
+  //    captures any correction she just made. Cheap model, and its result
+  //    is not needed for the reply, so failure is harmless.
+  const classified = classifyTurn(pending[pending.length - 1].id, merged)
+
+  // 6. Generate and send.
   await sendTyping(msg.chat.id)
   const { parts } = await respond(merged)
+  await classified.catch(() => {})
 
   for (const [i, part] of parts.entries()) {
     if (i > 0) {

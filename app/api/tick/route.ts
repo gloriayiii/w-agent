@@ -1,5 +1,6 @@
-import { sql } from 'drizzle-orm'
-import { db } from '@/lib/db'
+import { sql, eq } from 'drizzle-orm'
+import { db, traces, triggerState } from '@/lib/db'
+import { reflect } from '@/lib/memory/reflect'
 import { localNow } from '@/lib/persona/state'
 import {
   QUIET_HOURS,
@@ -63,9 +64,50 @@ export async function GET(req: Request) {
     database = { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
 
+  // --- Nightly jobs, once per local day, in the quiet hours ---
+  // trigger_state doubles as the "did this already run today" ledger, so no
+  // extra table and no risk of two ticks doing the work twice.
+  let nightly: unknown = 'not due'
+  if (hour >= 4 && hour < 6) {
+    const [state] = await db
+      .select()
+      .from(triggerState)
+      .where(eq(triggerState.type, 'nightly'))
+      .limit(1)
+
+    const due = !state?.cooldownUntil || new Date(state.cooldownUntil) < new Date()
+    if (due) {
+      // Claim the slot first: a second tick 15 minutes later must not
+      // re-run reflection on the same day.
+      const next = new Date(Date.now() + 20 * 3600 * 1000)
+      await db
+        .insert(triggerState)
+        .values({ type: 'nightly', cooldownUntil: next })
+        .onConflictDoUpdate({
+          target: triggerState.type,
+          set: { cooldownUntil: next },
+        })
+
+      const reflection = await reflect()
+
+      // traces store a full prompt each (~5KB). A year of them is ~150MB,
+      // a third of Neon's free tier, and anything older than a month has
+      // no debugging value. messages are NEVER pruned — that table is the
+      // one irreplaceable thing in this project.
+      const pruned = await db.execute(
+        sql`delete from traces where ts < now() - interval '30 days'`
+      )
+
+      nightly = { reflection, tracesPruned: true, pruned: Boolean(pruned) }
+    } else {
+      nightly = 'already ran today'
+    }
+  }
+
   return Response.json({
     ok: true,
     hour,
+    nightly,
     inQuietHours: hour < QUIET_HOURS.end && hour >= QUIET_HOURS.start - 1,
     quota: DAILY_PROACTIVE_QUOTA,
     suppressMin: RECENT_CHAT_SUPPRESS_MIN,

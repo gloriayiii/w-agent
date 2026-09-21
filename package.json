@@ -10,7 +10,10 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "eval": "tsx scripts/eval.ts",
-    "webhook:set": "tsx scripts/set-webhook.ts"
+    "webhook:set": "tsx scripts/set-webhook.ts",
+    "backup": "node scripts/backup.mjs",
+    "review": "node scripts/review.mjs",
+    "reflect": "tsx scripts/reflect-now.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.0",

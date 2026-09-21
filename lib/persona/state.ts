@@ -1,6 +1,7 @@
 import { db, messages } from '@/lib/db'
 import { desc, sql as dsql } from 'drizzle-orm'
 import { nightInstruction, type LateNightContext } from './rules'
+import { recall } from '@/lib/memory/recall'
 
 const TZ = process.env.TZ_NAME || 'Asia/Shanghai'
 
@@ -12,6 +13,10 @@ export type PersonaState = {
   openTopics: string
   todaySchedule: string
   nightInstruction: string | null
+  /** Durable statements she has made about herself. */
+  facts: string
+  /** Day-level summaries from the last week. */
+  episodes: string
 }
 
 /** Local-time hour plus a human-readable timestamp. */
@@ -119,14 +124,18 @@ export async function buildState(): Promise<PersonaState> {
     hasEarlyCommitmentTomorrow: true,
   }
 
+  const memory = await recall()
+
   return {
     now: nowText,
     hour,
     gap,
     mood: inferMood(recent),
-    openTopics: '（记忆层还没做，暂无）',
+    openTopics: memory.openTopics,
     todaySchedule: '（日历还没接，暂无）',
     nightInstruction: nightInstruction(ctx),
+    facts: memory.facts,
+    episodes: memory.episodes,
   }
 }
 
@@ -137,7 +146,20 @@ export function renderState(s: PersonaState): string {
     `今天日程：${s.todaySchedule}`,
     `距上次对话：${s.gap}`,
     `最近几轮她的状态：${s.mood}`,
-    `聊过但没聊完的：${s.openTopics}`,
+    '',
+    '# 你记得的事',
+    '',
+    '这些是她真的说过的。除了这里和上面的对话记录，',
+    '你没有任何其他信息来源——具体的日期、次数、名字都必须出自这里。',
+    '',
+    '## 关于她',
+    s.facts,
+    '',
+    '## 最近几天',
+    s.episodes,
+    '',
+    '## 聊过但没聊完的',
+    s.openTopics,
   ]
   if (s.nightInstruction) {
     lines.push('', '【此刻额外适用的规则】', s.nightInstruction)
