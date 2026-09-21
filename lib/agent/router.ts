@@ -15,17 +15,27 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
  * feeling like two different people.
  */
 
-const deepseek = createOpenAICompatible({
-  name: 'deepseek',
-  baseURL: 'https://api.deepseek.com',
-  apiKey: process.env.DEEPSEEK_API_KEY ?? '',
-})
+/**
+ * Built on first use, not at module load — see the note in lib/telegram/api.ts.
+ * The Anthropic provider already resolves its key lazily; this one does not.
+ */
+let deepseekProvider: ReturnType<typeof createOpenAICompatible> | null = null
+function deepseek() {
+  if (!deepseekProvider) {
+    deepseekProvider = createOpenAICompatible({
+      name: 'deepseek',
+      baseURL: 'https://api.deepseek.com',
+      apiKey: process.env.DEEPSEEK_API_KEY ?? '',
+    })
+  }
+  return deepseekProvider
+}
 
 export const MODELS = {
   /** Every reply Gloria actually reads. */
   voice: () => anthropic('claude-sonnet-5'),
   /** Proactive send/skip gating, intent classification, argument parsing. */
-  internal: () => deepseek('deepseek-flash'),
+  internal: () => deepseek()('deepseek-flash'),
   /** Daily reflection — needs slightly more of a brain. */
   reflect: () => anthropic('claude-haiku-4-5-20251001'),
 } as const

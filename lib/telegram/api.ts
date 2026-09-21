@@ -1,5 +1,19 @@
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN
-const API = () => `https://api.telegram.org/bot${TOKEN}`
+/**
+ * Read the token per call, never at module load.
+ *
+ * ES imports are evaluated before any statement in the importing file, so a
+ * module-level `process.env.TELEGRAM_BOT_TOKEN` is read BEFORE
+ * scripts/set-webhook.ts gets to call process.loadEnvFile('.env'). The URL
+ * then becomes `/botundefined/setWebhook`, and Telegram answers 404
+ * "Not Found" — which reads exactly like an invalid token and sends you
+ * hunting for the wrong bug.
+ */
+function token(): string {
+  const t = process.env.TELEGRAM_BOT_TOKEN
+  if (!t) throw new Error('TELEGRAM_BOT_TOKEN is not set')
+  return t
+}
+const API = () => `https://api.telegram.org/bot${token()}`
 
 async function call<T = unknown>(method: string, body: unknown): Promise<T> {
   const res = await fetch(`${API()}/${method}`, {

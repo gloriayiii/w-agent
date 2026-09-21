@@ -8,7 +8,12 @@ import { trace } from '@/lib/trace'
 
 export const maxDuration = 300
 
-const OWNER = process.env.TELEGRAM_OWNER_CHAT_ID!
+/** Read per request. An unset value must not silently become `undefined`. */
+function owner(): string {
+  const o = process.env.TELEGRAM_OWNER_CHAT_ID
+  if (!o) throw new Error('TELEGRAM_OWNER_CHAT_ID is not set')
+  return o
+}
 
 /**
  * Merge window. Real people send "you there" -> "about that thing" ->
@@ -39,7 +44,7 @@ async function handle(update: TgUpdate) {
   // --- Feedback: she reacted to one of W's messages ---
   if (update.message_reaction) {
     const r = update.message_reaction
-    if (String(r.chat.id) !== OWNER) return
+    if (String(r.chat.id) !== owner()) return
     const emoji = r.new_reaction?.[0]?.emoji
     if (!emoji) return
     const signal = ['👍', '❤', '❤️', '🔥', '🥰'].includes(emoji)
@@ -61,7 +66,7 @@ async function handle(update: TgUpdate) {
   const msg = update.message
   if (!msg?.text) return
   // The only auth in the system: ignore everyone who isn't her.
-  if (String(msg.chat.id) !== OWNER) return
+  if (String(msg.chat.id) !== owner()) return
 
   // 3. Idempotency. A re-delivered update collides on tg_update_id and the
   //    insert returns nothing, so we bail.
